@@ -1,9 +1,12 @@
 import os
 import json
 from Utilities import Utils
+import csv
 import asyncio
 import aiohttp
 class AzureBatch:
+
+    path_to_csv_file = '<Enter Path to the CSV File>'
     def __init__(self, aoai_client, input_storage_handler, 
                  error_storage_handler, processed_storage_handler, batch_path,
                 input_directory_client, local_download_path, output_directory, error_directory,
@@ -18,6 +21,11 @@ class AzureBatch:
         self.output_directory = output_directory
         self.error_directory = error_directory
         self.count_tokens = count_tokens
+        
+        #Write Header
+        if os.path.exists(self.path_to_csv_file) is False:
+            with open(self.path_to_csv_file, 'w', newline='') as csv_file:
+                csv.DictWriter(csv_file, fieldnames=["input_file_name", "input_file_id", "batch_id"]).writeheader()
 
     async def process_all_files(self,files,micro_batch_size):
         tasks = []
@@ -101,6 +109,20 @@ class AzureBatch:
         await self.aoai_client.wait_for_file_upload(file_id)
         try:
             initial_batch_response = self.aoai_client.create_batch_job(file_id)
+            batch_id = initial_batch_response.id
+
+            mapping_entry = {
+                "input_file_name": file,
+                "input_file_id": file_id,
+                "batch_id": batch_id
+            }
+
+            #Append mapping entry to CSV file
+            with open(self.path_to_csv_file, mode='a', newline='') as csv_file_write:
+                writer = csv.DictWriter(csv_file_write, fieldnames=["input_file_name", "input_file_id", "batch_id"])
+                writer.writerow(mapping_entry)
+            
+            print (f"Mapping: : {mapping_entry}")
         except Exception as e:
             print(f"An error occurred while creating batch job for file: {file}. Error: {e}")
             file_write_result = self.error_storage_handler.write_content_to_directory(batch_file_data,error_directory_name,file_wo_directory)
